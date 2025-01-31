@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registration Form</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+</head>
+
+<body>
+    <div class="container">
+        <h2 class="heading">Registration Form</h2>
+        <form>
+            <div style="display: flex; gap: 10px;">
+                <div class="inputContainer">
+                    <i class="fas fa-user icon"></i>
+                    <input class="inputSmall" type="text" placeholder="First Name" required>
+                </div>
+                <div class="inputContainer">
+                    <i class="fas fa-user icon"></i>
+                    <input class="inputSmall" type="text" placeholder="Last Name" required>
+                </div>
+            </div>
+            <div class="inputContainer">
+                <i class="fas fa-envelope icon"></i>
+                <input class="inputStyle" type="email" placeholder="Email" required>
+            </div>
+            <div class="inputContainer">
+                <i class="fas fa-lock icon"></i>
+                <input class="inputStyle" type="password" placeholder="Password" required>
+            </div>
+            <div class="inputContainer">
+                <i class="fas fa-phone icon"></i>
+                <input class="inputStyle" type="number" placeholder="Phone Number" required>
+            </div>
+            <div class="inputContainer">
+                <i class="fas fa-calendar icon" style="padding: 10px;"></i>
+                <input class="inputStyle" type="date" placeholder="Date of Birth" required>
+            </div>
+            <div class="gender">
+                <label><input type="radio" name="gender" value="male"> Male</label>
+                <label><input type="radio" name="gender" value="female"> Female</label>
+            </div>
+            <select style="width: 100%;" required>
+                <option value="">Select a district</option>
+                <option value="dhaka">Dhaka</option>
+                <option value="chittagong">Chittagong</option>
+                <option value="khulna">Khulna</option>
+                <option value="rajshahi">Rajshahi</option>
+                <option value="sylhet">Sylhet</option>
+                <option value="barisal">Barisal</option>
+            </select>
+            <label><input type="checkbox" required> I agree with terms and conditions</label>
+            <label><input type="checkbox"> I want to receive the newsletter</label>
+            <button type="submit">Register</button>
+        </form>
+    </div>
+</body>
+
+</html>

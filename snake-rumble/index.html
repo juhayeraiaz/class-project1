@@ -264,7 +264,7 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--sun);outline-of
 <script>
 (() => {
 'use strict';
-const FB = window.FBInstant || null;
+let FB = window.FBInstant || null;
 const $ = s => document.querySelector(s);
 const TAU = Math.PI * 2;
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -972,7 +972,7 @@ async function boot() {
   loadLocal();
   if (FB) {
     try {
-      await FB.initializeAsync();
+      await Promise.race([FB.initializeAsync(), new Promise((_, no) => setTimeout(() => no(new Error('not inside Facebook')), 4000))]);
       FB.setLoadingProgress(100);
       await FB.startGameAsync();
       const data = await FB.player.getDataAsync(['save']).catch(() => ({}));
@@ -982,7 +982,7 @@ async function boot() {
       if (photo) { const av = $('#avatar'); av.style.backgroundImage = `url("${photo}")`; av.textContent = ''; }
       $('#challengeBtn').hidden = false;
       FB.onPause(() => { paused = true; });
-    } catch (e) { console.warn('FBInstant init failed', e); }
+    } catch (e) { console.warn('FBInstant unavailable, playing offline', e); FB = null; $('#challengeBtn').hidden = true; }
   }
   initWorld();
   renderMenu();

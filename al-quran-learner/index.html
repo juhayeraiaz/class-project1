@@ -419,7 +419,7 @@ const I = {
 const tip = html => `<div class="tip">${I.bulb}<div>${html}</div></div>`;
 
 /* ---------- settings ---------- */
-const S = Object.assign({slow:true,size:'m',qari:'husary',ucc:true,mean:true,rep:1,voice:'app'}, store('aql-set')||{});
+const S = Object.assign({slow:true,size:'m',qari:'husary',ucc:true,mean:true,rep:1}, store('aql-set')||{});
 const REMOTE = true; // real qari recordings are reachable only on our own hosting
 if(store('aql-slow')===false && !store('aql-set')) S.slow=false;
 const saveS = () => store('aql-set',S);
@@ -488,60 +488,29 @@ function playAudio(url, kind, el, rateV){
     const p=player.play(); if(p) p.then(()=>{SRC[kind]=true}).catch(e=>{ if(e&&e.name==='AbortError') return; fail(); });
   });
 }
-/* ---------- built-in voice clips (always work, no setup) ---------- */
-function fnv(s){ let h=0x811c9dc5; for(const ch of s){ h^=ch.codePointAt(0); h=Math.imul(h,0x01000193)>>>0; } return h.toString(16).padStart(8,'0'); }
-const clipKey = t => fnv(cleanAr(t));
-const CLIPS = {}, packs = {};
-function loadPack(name){
-  if(!packs[name]) packs[name] = fetch(`audio/${name}.json`).then(r=>{ if(!r.ok) throw new Error(r.status); return r.json(); })
-    .then(o=>{ Object.assign(CLIPS,o); return true; }).catch(()=>{ packs[name]=null; return false; });
-  return packs[name];
+/* ---------- device voice for letters; qari recordings for Quran ---------- */
+let noVoiceShown=false;
+async function sayText(text, el){
+  if(TTS.ok && TTS.voice) return speak(text, el);
+  if(!noVoiceShown){ noVoiceShown=true; toast('এই ডিভাইসে আরবি ভয়েস পাওয়া যায়নি — হোম পেজের নির্দেশনা দেখুন।',4500); }
+  return false;
 }
-loadPack('core');
-let actx=null, stopClip=null;
-function audioCtx(){ const C=window.AudioContext||window.webkitAudioContext; if(!C) return null; if(!actx) actx=new C(); if(actx.state==='suspended') actx.resume(); return actx; }
-async function playBuffer(b64, el){
-  const c=audioCtx(); if(!c) return false;
-  const bin=atob(b64), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
-  let buf; try{ buf=await new Promise((res,rej)=>c.decodeAudioData(u8.buffer,res,rej)); }catch(e){ return false; }
-  return new Promise(res=>{
-    const s=c.createBufferSource(); s.buffer=buf; s.playbackRate.value=S.slow?0.85:1; s.connect(c.destination);
-    let done=false; const fin=v=>{ if(done) return; done=true; stopClip=null; el&&el.classList.remove('speaking'); res(v); };
-    s.onended=()=>fin(true); stopClip=()=>{ try{s.stop()}catch(e){} fin(null); };
-    el&&el.classList.add('speaking'); s.start();
-  });
-}
-async function playClip(text, el, pack){
-  const run=TTS.run;
-  if(!CLIPS[clipKey(text)]) await loadPack(pack||'core');
-  const b64=CLIPS[clipKey(text)]; if(!b64) return false;
-  if(run!==TTS.run) return null;
-  const r = await playAudio('data:audio/mpeg;base64,'+b64,'clip',el,S.slow?0.85:1);
-  if(r!==false || run!==TTS.run) return r;
-  return playBuffer(b64, el);
-}
-async function sayText(text, el, pack){
-  if(S.voice==='device' && TTS.ok && TTS.voice) return speak(text, el);
-  const run=TTS.run;
-  const r = await playClip(text, el, pack);
-  if(r===false && run===TTS.run) return speak(text, el);
-  return r;
-}
+const QURAN_ONLY_MSG = 'কুরআনের আয়াত শুধু কারির কণ্ঠে শোনানো হয় — উপরের quran.com বাটনে চাপ দিন।';
 async function sayAyah(n,a,el){
   const run=TTS.run;
   if(REMOTE){ const r = await playAudio(`https://everyayah.com/data/${QARI[S.qari].p}/${pad3(n)}${pad3(a)}.mp3`,'ayah',el); if(r!==false || run!==TTS.run) return; }
-  await sayText(SURAH_DATA[n].v[a-1][0], el, 'surah');
+  if(run===TTS.run) toast(QURAN_ONLY_MSG,4500);
 }
 async function sayWord(n,a,w,text,el){
   const run=TTS.run;
   if(REMOTE){ const r = await playAudio(`https://audio.qurancdn.com/wbw/${pad3(n)}_${pad3(a)}_${pad3(w)}.mp3`,'word',el); if(r!==false || run!==TTS.run) return; }
-  await sayText(text, el, 'surah');
+  if(run===TTS.run) toast(QURAN_ONLY_MSG,4500);
 }
 function stopAll(){
   TTS.run++;
   if(TTS.ok) speechSynthesis.cancel();
   try{ player.pause(); }catch(e){}
-  finishAudio && finishAudio(); stopClip && stopClip();
+  finishAudio && finishAudio();
   document.querySelectorAll('.speaking,.playing').forEach(e=>e.classList.remove('speaking','playing'));
   $('#stopFab').hidden=true;
 }
@@ -580,12 +549,18 @@ function closeSheet(){ $('#sheetHost').innerHTML=''; }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheet(); });
 
 function renderVoiceStatus(el){
-  const hasDev = TTS.ok && TTS.voice;
-  el.innerHTML = `<div class="set-row">
-    <label class="radio"><input type="radio" name="voice" value="app" ${S.voice!=='device'?'checked':''}><span><div>অ্যাপের নিজস্ব কণ্ঠ</div><div class="small">সব ফোন ও কম্পিউটারে সরাসরি চলে, কিছু সেট করতে হয় না</div></span></label>
-    <label class="radio"><input type="radio" name="voice" value="device" ${S.voice==='device'?'checked':''} ${hasDev?'':'disabled'}><span><div>ডিভাইসের আরবি ভয়েস</div><div class="small">${hasDev?'পাওয়া গেছে: '+esc(TTS.voice.name)+' — কিছু ফোনে আরও স্বাভাবিক শোনায়':'এই ডিভাইসে পাওয়া যায়নি'}</div></span></label>
-    <button class="btn sm" data-say="بِسْمِ اللّٰهِ" style="align-self:flex-start">${I.play} পরীক্ষা করুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div>`;
-  el.querySelectorAll('input[name=voice]').forEach(r=>r.onchange=()=>{ S.voice=r.value; saveS(); });
+  if(TTS.ok && TTS.voice){
+    el.innerHTML = `<div class="note"><div class="row"><span class="badge g">আরবি ভয়েস চালু</span><span class="small">${esc(TTS.voice.name)}</span></div>
+      <div class="row"><button class="btn sm" data-say="بِسْمِ اللّٰهِ">${I.play} পরীক্ষা করুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div>
+      <p class="small">হরফ ও হরকতের উচ্চারণ ডিভাইসের আরবি ভয়েসে শোনানো হয়। কুরআনের আয়াত শুধু কারির কণ্ঠে শোনানো হয়।</p></div>`;
+  } else {
+    el.innerHTML = `<div class="note warn"><h3>হরফের উচ্চারণ শুনতে ফোনের আরবি ভয়েস চালু করুন</h3>
+      <details><summary>কীভাবে চালু করবেন</summary><ul style="margin-top:6px">
+      <li><b>Android:</b> Settings → Accessibility (বা System) → Text-to-speech → Speech Services by Google → ⚙ → Install voice data → <b>Arabic</b>। তারপর <b>Chrome</b>-এ খুলুন।</li>
+      <li><b>iPhone:</b> Settings → Accessibility → Spoken Content → Voices → <b>Arabic</b> ডাউনলোড করুন।</li>
+      <li><b>কম্পিউটার:</b> <b>Microsoft Edge</b>-এ খুললে সাধারণত আগে থেকেই থাকে।</li></ul></details>
+      <div class="row"><button class="btn sm" data-say="بِسْمِ اللّٰهِ">${I.play} পরীক্ষা করুন</button></div></div>`;
+  }
 }
 function segHTML(name, opts, cur){ return `<div class="seg" role="group">${opts.map(([v,l])=>`<button data-set="${name}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${l}</button>`).join('')}</div>`; }
 function bindSeg(root, onChange){
@@ -600,7 +575,7 @@ function openSettings(){
    <div class="set-row"><b>আরবি লেখার আকার</b>${segHTML('size',[['s','ছোট'],['m','মাঝারি'],['l','বড়'],['xl','অনেক বড়']],S.size)}
      <div class="ar" style="font-size:calc(34px * var(--arS));text-align:center;line-height:1.8">ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ</div></div>
    ${REMOTE?`<div class="set-row"><b>সূরার কারি</b>${Object.entries(QARI).map(([k,q])=>`<label class="radio"><input type="radio" name="qari" value="${k}" ${S.qari===k?'checked':''}><span><div>${q.n}</div><div class="small">${q.d}</div></span></label>`).join('')}</div>`:''}
-   <div class="set-row"><b>হরফ ও শব্দের কণ্ঠ</b><div data-voice-status></div></div>
+   <div class="set-row"><b>আরবি ভয়েস</b><div data-voice-status></div></div>
    <div class="set-row"><b>অগ্রগতি</b><div class="row"><button class="btn sm" id="resetBtn">সব অগ্রগতি মুছুন</button><span class="small" id="resetMsg"></span></div></div>
    <button class="btn primary" data-close>ঠিক আছে</button>`, sh=>{
     bindSeg(sh);
@@ -620,7 +595,7 @@ function welcome(){
    <h2 style="text-align:center">আসসালামু আলাইকুম!</h2>
    <p style="text-align:center">এই অ্যাপে একদম শুরু থেকে, বাংলায়, কুরআন পড়া শিখবেন — কোনো আগের জ্ঞান লাগবে না।</p>
    <ul class="checklist">
-    <li><span class="n">১</span><span><b>ছুঁয়ে শুনুন:</b> যেকোনো আরবি হরফ বা শব্দে ছুঁয়ে দিলেই উচ্চারণ শোনা যাবে — কিছু সেট করতে হবে না। ফোনের ভলিউম বাড়িয়ে নিন।</span></li>
+    <li><span class="n">১</span><span><b>ছুঁয়ে শুনুন:</b> যেকোনো আরবি হরফ বা শব্দে ছুঁয়ে দিলে উচ্চারণ শোনা যাবে।</span></li>
     <li><span class="n">২</span><span><b>নিজে বলুন:</b> শোনার পর জোরে জোরে ৩ বার বলুন।</span></li>
     <li><span class="n">৩</span><span><b>ক্রমানুসারে এগোন:</b> প্রতিদিন ১৫–২০ মিনিট, একটি করে পাঠ।</span></li></ul>
    <button class="btn primary" data-close>বিসমিল্লাহ, শুরু করি</button></div>`);
@@ -656,7 +631,7 @@ function home(){
   </section>`;
   if(nx){ html += `<a class="continue" href="#${nx.id}"><span class="ar-big">${nx.ar.split(' ')[0]}</span><span><div class="eyebrow">${n?'চালিয়ে যান':'এখান থেকে শুরু করুন'} · পাঠ ${bnNum(LESSONS.indexOf(nx)+1)}</div><div class="t">${nx.t}</div><div class="small">${nx.d}</div><span class="btn primary sm go">${I.play} ${n?'চালিয়ে যান':'শুরু করুন'}</span></span></a>`; }
   else { html += `<div class="note"><h3>আলহামদুলিল্লাহ! সব পাঠ সম্পন্ন।</h3><p class="small">এখন প্রতিদিন সূরাগুলো পড়ুন আর খতমের পরিকল্পনা মেনে কুরআন শরীফ পড়া শুরু করুন।</p></div>`; }
-  html += `<div class="note"><div class="row"><span class="badge g">শব্দ চালু</span><span class="small">যেকোনো আরবি হরফ বা শব্দে চাপ দিলেই উচ্চারণ শুনবেন। ফোনের ভলিউম বাড়িয়ে নিন।</span></div><div class="row"><button class="btn sm" data-say="بِسْمِ اللّٰهِ">${I.play} এখনই শুনে দেখুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div></div>`;
+  html += `<div data-voice-status></div>`;
   PARTS.forEach((p,pi)=>{
     const ls=LESSONS.filter(l=>l.p===pi), dn=ls.filter(l=>DONE.has(l.id)).length;
     html += `<section class="part"><div class="part-h"><h2>${p}</h2><span class="cnt">${bnNum(dn)}/${bnNum(ls.length)}</span></div><div class="part-bar"><i style="width:${dn/ls.length*100}%"></i></div>`;
@@ -666,6 +641,7 @@ function home(){
   });
   html += `<p class="small" style="text-align:center">আরবি পাঠ: উসমানি লিপি (বাদশাহ ফাহাদ কমপ্লেক্স) · তিলাওয়াত: everyayah.com ও quran.com</p></div>`;
   app.innerHTML = html;
+  document.querySelectorAll('[data-voice-status]').forEach(renderVoiceStatus);
 }
 
 function lessonShell(id, lead, body){
@@ -903,7 +879,6 @@ function lessonSurahList(){
 }
 function surahView(n){
   const s=SURAH_DATA[n]; if(!s){ location.hash='l11'; return; }
-  loadPack('surah');
   const i = SURAH_ORDER.indexOf(n), nx = SURAH_ORDER[i+1], pv = SURAH_ORDER[i-1];
   app.innerHTML = `<div class="stack ${S.ucc?'':'no-ucc'} ${S.mean?'':'no-mean'}" id="sv">
    <div class="s-head"><div class="arname">سُورَةُ ${s.ar}</div><h1>${SURAH_BN[n]}</h1><p class="small">${s.bn} · সূরা নং ${bnNum(n)} · ${bnNum(s.v.length)} আয়াত · ${SURAH_NOTE[n]}</p></div>
@@ -912,7 +887,7 @@ function surahView(n){
      <a class="btn" href="https://quran.com/${n}" target="_blank" rel="noopener">${I.ext} quran.com</a></div>
     <div class="ctrl-row"><span>প্রতি আয়াত</span>${segHTML('rep',[[1,'১ বার'],[3,'৩ বার'],[5,'৫ বার']],S.rep)}</div>
     <div class="ctrl-row"><label class="tg"><input type="checkbox" id="tUcc" ${S.ucc?'checked':''}> বাংলা উচ্চারণ</label><label class="tg"><input type="checkbox" id="tMean" ${S.mean?'checked':''}> বাংলা অর্থ</label></div>
-    <p class="small">${REMOTE?`কারি: ${QARI[S.qari].n} · `:''}শব্দে ছুঁয়ে আলাদা করে শুনুন · মুখস্থ করতে “৩ বার” বেছে নিন</p>
+    <p class="small">${REMOTE?`কারি: ${QARI[S.qari].n} · শব্দে ছুঁয়ে আলাদা করে শুনুন · মুখস্থ করতে “৩ বার” বেছে নিন`:'কুরআনের আয়াত যন্ত্রের কণ্ঠে পড়ালে তাজবীদ ভুল হয়, তাই এখানে শুধু কারির তিলাওয়াত শুনুন: উপরের <b>quran.com</b> বাটনে চাপ দিন।'}</p>
    </div>
    ${n!==1?`<div class="bism" id="bism" lang="ar">${SURAH_DATA[1].v[0][0]}</div>`:''}
    ${s.v.map((v,k)=>`<article class="ayah" data-ay="${k}">

@@ -1,7 +1,7 @@
 // Offline support: app shell is network-first with cache fallback; fonts are cached after first load.
-// Built-in voice clips (audio/core.json) are cached; qari recitation is streamed, not cached.
-const CACHE = 'aql-v3';
-const SHELL = ['./', './index.html', './audio/core.json', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
+// Recitation audio is streamed and not cached.
+const CACHE = 'aql-v4';
+const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

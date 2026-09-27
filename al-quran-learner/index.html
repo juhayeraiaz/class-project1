@@ -493,7 +493,8 @@ function playAudio(url, kind, el, rateV){
 let noVoiceShown=false;
 async function sayText(text, el){
   if(TTS.ok && TTS.voice) return speak(text, el);
-  if(!noVoiceShown){ noVoiceShown=true; toast('এই ডিভাইসে আরবি ভয়েস পাওয়া যায়নি — হোম পেজের নির্দেশনা দেখুন।',4500); }
+  const m = el && el.dataset.muq; if(m){ const [n,a]=m.split(':').map(Number); return sayAyah(n,a,el); }
+  if(!noVoiceShown){ noVoiceShown=true; toast('এই হরফের শব্দ শুনতে ফোনের আরবি ভয়েস লাগবে — হোম পেজের নির্দেশনা দেখুন।',4500); }
   return false;
 }
 // Bundled recitation (Sheikh Sa'd al-Ghamidi, versebyversequran.com): audio/SSS/AAA.mp3, 000 = bismillah
@@ -559,6 +560,7 @@ document.addEventListener('click',e=>{
   const el = e.target.closest('[data-say],[data-w]'); if(!el) return;
   if(el.closest('.hidden-read')) el.classList.add('revealed');
   stopAll(); markActive();
+  if(el.dataset.ayah){ const [n,a]=el.dataset.ayah.split(':').map(Number); sequence(()=>sayAyah(n,a,el)); return; }
   if(el.dataset.w){ const [n,a,w]=el.dataset.w.split(':').map(Number); sayWord(n,a,w,el.textContent,el); }
   else sayLessonText(el.dataset.say, el);
 });
@@ -587,18 +589,15 @@ function closeSheet(){ $('#sheetHost').innerHTML=''; }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheet(); });
 
 function renderVoiceStatus(el){
-  if(TTS.ok && TTS.voice){
-    el.innerHTML = `<div class="note"><div class="row"><span class="badge g">আরবি ভয়েস চালু</span><span class="small">${esc(TTS.voice.name)}</span></div>
-      <div class="row"><button class="btn sm" data-say="بِسْمِ اللّٰهِ">${I.play} পরীক্ষা করুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div>
-      <p class="small">হরফ ও হরকতের উচ্চারণ ডিভাইসের আরবি ভয়েসে শোনানো হয়। কুরআনের আয়াত শুধু কারির কণ্ঠে শোনানো হয়।</p></div>`;
-  } else {
-    el.innerHTML = `<div class="note warn"><h3>হরফের উচ্চারণ শুনতে ফোনের আরবি ভয়েস চালু করুন</h3>
-      <details><summary>কীভাবে চালু করবেন</summary><ul style="margin-top:6px">
-      <li><b>Android:</b> Settings → Accessibility (বা System) → Text-to-speech → Speech Services by Google → ⚙ → Install voice data → <b>Arabic</b>। তারপর <b>Chrome</b>-এ খুলুন।</li>
+  const dev = TTS.ok && TTS.voice;
+  el.innerHTML = `<div class="note ${dev?'':'warn'}"><div class="row"><span class="badge g">সূরা ও আয়াত: কারির কণ্ঠে</span><span class="small">কিছু সেট করতে হবে না</span></div>
+    <div class="row"><button class="btn sm" data-ayah="1:1">${I.play} তিলাওয়াত শুনুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div>
+    ${dev?`<p class="small">হরফ ও হরকত: ফোনের আরবি ভয়েসে (${esc(TTS.voice.name)})। ১৪টি হরফ কারির কণ্ঠেও শোনা যায়।</p>`
+    :`<p class="small" style="color:var(--ink)"><b>হরফ ও হরকতের শব্দ:</b> ১৪টি হরফ কারির কণ্ঠে শোনা যায়। বাকিগুলো শুনতে একবার ফোনের আরবি ভয়েস চালু করুন:</p>
+    <details><summary>কীভাবে চালু করবেন</summary><ul style="margin-top:6px">
+      <li><b>Android:</b> Settings → Accessibility (বা System) → Text-to-speech → Speech Services by Google → ⚙ → Install voice data → <b>Arabic</b>। তারপর লিংকটি <b>Chrome</b>-এ খুলুন।</li>
       <li><b>iPhone:</b> Settings → Accessibility → Spoken Content → Voices → <b>Arabic</b> ডাউনলোড করুন।</li>
-      <li><b>কম্পিউটার:</b> <b>Microsoft Edge</b>-এ খুললে সাধারণত আগে থেকেই থাকে।</li></ul></details>
-      <div class="row"><button class="btn sm" data-say="بِسْمِ اللّٰهِ">${I.play} পরীক্ষা করুন</button></div></div>`;
-  }
+      <li><b>কম্পিউটার:</b> <b>Microsoft Edge</b>-এ খুললে সাধারণত আগে থেকেই থাকে।</li></ul></details>`}</div>`;
 }
 function segHTML(name, opts, cur){ return `<div class="seg" role="group">${opts.map(([v,l])=>`<button data-set="${name}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${l}</button>`).join('')}</div>`; }
 function bindSeg(root, onChange){
@@ -613,7 +612,6 @@ function openSettings(){
    <div class="set-row"><b>আরবি লেখার আকার</b>${segHTML('size',[['s','ছোট'],['m','মাঝারি'],['l','বড়'],['xl','অনেক বড়']],S.size)}
      <div class="ar" style="font-size:calc(34px * var(--arS));text-align:center;line-height:1.8">ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ</div></div>
    ${REMOTE?`<div class="set-row"><b>সূরার কারি</b>${Object.entries(QARI).map(([k,q])=>`<label class="radio"><input type="radio" name="qari" value="${k}" ${S.qari===k?'checked':''}><span><div>${q.n}</div><div class="small">${q.d}</div></span></label>`).join('')}</div>`:''}
-   <div class="set-row"><b>আরবি ভয়েস</b><div data-voice-status></div></div>
    <div class="set-row"><b>অগ্রগতি</b><div class="row"><button class="btn sm" id="resetBtn">সব অগ্রগতি মুছুন</button><span class="small" id="resetMsg"></span></div></div>
    <button class="btn primary" data-close>ঠিক আছে</button>`, sh=>{
     bindSeg(sh);
@@ -699,13 +697,19 @@ document.addEventListener('click',e=>{
   location.hash = next?next.id:'home';
 });
 
+/* Letters the qari pronounces by name in the Quran (huruf muqatta'at), from the bundled recordings */
+const MUQ_SURAH = {2:'আল-বাকারা',10:'ইউনুস',19:'মারইয়াম',20:'ত্বা-হা',36:'ইয়াসীন',38:'সোয়াদ',40:'গাফির',42:'আশ-শূরা',50:'ক্বাফ',68:'আল-কলম'};
+const MUQ = {'ا':[2,1,'الٓمٓ'],'ل':[2,1,'الٓمٓ'],'م':[40,1,'حمٓ'],'ر':[10,1,'الٓر'],'ك':[19,1,'كٓهيعٓصٓ'],'ه':[20,1,'طه'],'ي':[36,1,'يسٓ'],'ع':[42,2,'عٓسٓقٓ'],'ص':[38,1,'صٓ'],'ط':[20,1,'طه'],'س':[36,1,'يسٓ'],'ح':[40,1,'حمٓ'],'ق':[50,1,'قٓ'],'ن':[68,1,'نٓ']};
+const muqBtn = c => { const m=MUQ[c]; return m?`<button class="btn sm primary" data-ayah="${m[0]}:${m[1]}">${I.play} কারির কণ্ঠে <span class="ar">${m[2]}</span></button>`:''; };
+
 /* L1 letters */
 function lessonLetters(){
-  let grid = LETTERS.map((l,i)=>`<button class="tile ${l[5]?'heavy':''}" data-li="${i}" data-say="${l[1]}"><span class="a">${l[0]}</span><span class="b">${l[2]}</span></button>`).join('');
+  let grid = LETTERS.map((l,i)=>`<button class="tile ${l[5]?'heavy':''}" data-li="${i}" data-say="${l[1]}" ${MUQ[l[0]]?`data-muq="${MUQ[l[0]][0]}:${MUQ[l[0]][1]}"`:''}><span class="a">${l[0]}</span><span class="b">${l[2]}</span></button>`).join('');
   app.innerHTML = lessonShell('l1','আরবি লেখা <b>ডান দিক থেকে বাম দিকে</b> পড়া হয়। মোট ২৯টি হরফ। প্রতিটি হরফ ছুঁয়ে নাম শুনুন, তারপর নিজে ৩ বার বলুন।',
    `<div class="detail" id="letterDetail"></div>
    <div class="legend"><span><b style="color:var(--heavy)">লাল রঙের</b> হরফগুলো মোটা — মুখ ভরে পড়তে হয়</span></div>
    <div class="grid g-letters">${grid}</div>
+   ${tip('<b>কারির কণ্ঠে:</b> ১৪টি হরফ <span class="ari" dir="rtl">ا ل م ر ك ه ي ع ص ط س ح ق ن</span> কুরআনের কয়েকটি সূরার শুরুতে আলাদা করে পড়া হয় — যেমন <span class="ari" dir="rtl">الٓمٓ</span> (আলিফ-লা-ম-মী-ম)। হরফে চাপ দিয়ে উপরের সবুজ বাটনে সেটি কারির কণ্ঠে শুনুন। এই তিলাওয়াতে হরফের নাম লম্বা টেনে (মাদ্দ দিয়ে) পড়া হয়।')}
    ${tip('বাংলা বানানে <b>ذ ز ظ</b> তিনটিই “য”, আর <b>ث س ص</b> কাছাকাছি লেখা হয় — কিন্তু আসল আওয়াজ আলাদা। তাই কান দিয়ে শুনে শিখুন।')}`);
   const show = i => {
     const l = LETTERS[i];
@@ -714,7 +718,8 @@ function lessonLetters(){
     $('#letterDetail').innerHTML = `<div class="big ${l[5]?'heavy':''}" data-say="${l[1]}" lang="ar">${l[0]}</div>
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><div class="nm">${l[2]}<span class="ar">${l[1]}</span>${l[5]?' <span class="badge">মোটা</span>':''}</div>
       <p>${l[4]}</p>
-      <div class="chips">${['a','i','u'].map(v=>`<button class="btn sm" data-say="${arSyl(base,v)}"><span class="ar">${arSyl(base,v)}</span> ${bnSyl(base,v)}</button>`).join('')}</div></div>`;
+      ${MUQ[l[0]]?`<p class="small">কুরআনে কারি এই হরফের নাম পড়েছেন — সূরা ${MUQ_SURAH[MUQ[l[0]][0]]}, আয়াত ${bnNum(MUQ[l[0]][1])}-এর শুরুতে।</p>`:''}
+      <div class="chips">${muqBtn(l[0])}${['a','i','u'].map(v=>`<button class="btn sm" data-say="${arSyl(base,v)}"><span class="ar">${arSyl(base,v)}</span> ${bnSyl(base,v)}</button>`).join('')}</div></div>`;
   };
   app.querySelector('.g-letters').addEventListener('click',e=>{const t=e.target.closest('[data-li]'); if(t) show(+t.dataset.li);});
   show(1);
@@ -814,6 +819,15 @@ function lessonShadda(){
 }
 
 /* L8 tajweed */
+const AYAH_SKEL = []; for(const n of SURAH_ORDER) SURAH_DATA[n].v.forEach((v,ai)=>AYAH_SKEL.push([n,ai+1,' '+v[0].split(' ').map(skel).join(' ')+' ']));
+function findAyah(text){ const k=' '+text.trim().split(/\s+/).map(skel).join(' ')+' '; const hit=AYAH_SKEL.find(x=>x[2].includes(k)); return hit?[hit[0],hit[1]]:null; }
+function linkTajweedToQari(){
+  app.querySelectorAll('.card.rule .ex .tile[data-say]').forEach(t=>{
+    const q=findAyah(t.dataset.say); if(!q) return;
+    t.dataset.ayah=q.join(':');
+    t.insertAdjacentHTML('beforeend',`<span class="m" style="color:var(--accent)">কারির কণ্ঠে · ${SURAH_BN[q[0]]} ${bnNum(q[1])}</span>`);
+  });
+}
 function lessonTajweed(){
   const ex = arr => `<div class="ex">${arr.map(w=>`<button class="tile" data-say="${w[0]}"><span class="a">${w[0]}</span><span class="b">${w[1]}</span></button>`).join('')}</div>`;
   app.innerHTML = lessonShell('l8','তাজবীদ মানে কুরআনকে সুন্দর ও সঠিকভাবে পড়ার নিয়ম। শুরুতে এই ৬টি নিয়ম জানলেই ছোট সূরাগুলো ঠিকভাবে পড়তে পারবেন।',
@@ -835,7 +849,7 @@ function lessonTajweed(){
     <p><span class="badge g">ইদগাম — মিলিয়ে দেওয়া</span> পরে <span class="ari">ي ر م ل و ن</span> থাকলে “ন” পরের হরফে মিশে যায়।</p>
     ${ex([['مِن مَّسَدٍ','মিম্‌মাসাদ'],['لَهَبٍ وَتَبَّ','লাহাবিওঁ ওয়াতাব্ব']])}
     <p><span class="badge g">ইকলাব — বদলে দেওয়া</span> পরে <span class="ari">ب</span> থাকলে “ন”-কে “ম” পড়ুন (ছোট্ট <span class="ari">ۢ</span> মীম চিহ্ন থাকে)।</p>
-    ${ex([['مِنۢ بَعْدِ','মিম্‌ বা‘দি']])}
+    <div class="ex"><div class="tile"><span class="a">مِنۢ بَعْدِ</span><span class="b">মিম্‌ বা‘দি</span><span class="m">শিক্ষকের কাছে শুনে নিন</span></div></div>
     <p><span class="badge g">ইখফা — লুকিয়ে পড়া</span> বাকি ১৫টি হরফের আগে “ন” অর্ধেক, নাকে লুকিয়ে পড়ুন।</p>
     ${ex([['مِن شَرِّ','মিন্‌ শাররি (নাকে)'],['أَنتُمْ','আন্‌তুম']])}</div>
    <div class="card rule"><h2>৫. আল্লাহ শব্দের লাম</h2>
@@ -845,7 +859,8 @@ function lessonTajweed(){
     <p>আয়াতের শেষে থামলে শেষ হরফের হরকত বাদ দিয়ে জযম দিয়ে থামুন। দুই যবর হলে “আ-” দিয়ে থামুন।</p>
     ${ex([['ٱلرَّحِيمِ','আর্‌রহী-মি → আর্‌রহী-ম'],['أَفْوَاجًا','আফওয়া-জান → আফওয়া-জা']])}
     <p class="small">কুরআনে থামার চিহ্ন: <span class="ari">مـ</span> অবশ্যই থামুন · <span class="ari">لا</span> থামবেন না · <span class="ari">ج</span> দুটোই চলে · <span class="ari">صلى</span> না থামা উত্তম · <span class="ari">قلى</span> থামা উত্তম।</p></div>
-   ${tip('তাজবীদ সবচেয়ে ভালো শেখা যায় একজন শিক্ষকের কাছে শুনে শুনে। এই অ্যাপ দিয়ে ভিত্তি তৈরি করুন, তারপর কাউকে পড়ে শুনিয়ে সংশোধন করে নিন।')}`);
+   ${tip('সবুজ লেখা “কারির কণ্ঠে” থাকা উদাহরণে চাপ দিলে সেই আয়াতটি কারির তিলাওয়াতে বাজবে — মন দিয়ে নিয়মটি খেয়াল করুন। তাজবীদ সবচেয়ে ভালো শেখা যায় একজন শিক্ষকের কাছে শুনে শুনে।')}`);
+  linkTajweedToQari();
 }
 
 /* L9 words */

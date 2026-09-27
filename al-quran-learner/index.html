@@ -419,7 +419,7 @@ const I = {
 const tip = html => `<div class="tip">${I.bulb}<div>${html}</div></div>`;
 
 /* ---------- settings ---------- */
-const S = Object.assign({slow:true,size:'m',qari:'husary',ucc:true,mean:true,rep:1}, store('aql-set')||{});
+const S = Object.assign({slow:true,size:'m',qari:'ghamidi',ucc:true,mean:true,rep:1}, store('aql-set')||{});
 const REMOTE = true; // real qari recordings are reachable only on our own hosting
 if(store('aql-slow')===false && !store('aql-set')) S.slow=false;
 const saveS = () => store('aql-set',S);
@@ -427,6 +427,7 @@ const SIZES = {s:.9,m:1,l:1.2,xl:1.4};
 const applySize = () => document.documentElement.style.setProperty('--arS',SIZES[S.size]||1);
 applySize();
 const QARI = {
+  ghamidi:{n:'শাইখ সা‘দ আল-গামিদী',d:'অ্যাপের ভেতরেই আছে — ইন্টারনেট দুর্বল হলেও চলে',p:''},
   husary:{n:'শাইখ মাহমুদ খলীল আল-হুসারী',d:'ধীর ও স্পষ্ট — শেখার জন্য সবচেয়ে ভালো',p:'Husary_128kbps'},
   alafasy:{n:'শাইখ মিশারী রাশিদ আল-আফাসি',d:'মধুর কণ্ঠ, মাঝারি গতি',p:'Alafasy_128kbps'}
 };
@@ -495,11 +496,38 @@ async function sayText(text, el){
   if(!noVoiceShown){ noVoiceShown=true; toast('এই ডিভাইসে আরবি ভয়েস পাওয়া যায়নি — হোম পেজের নির্দেশনা দেখুন।',4500); }
   return false;
 }
-const QURAN_ONLY_MSG = 'কুরআনের আয়াত শুধু কারির কণ্ঠে শোনানো হয় — উপরের quran.com বাটনে চাপ দিন।';
+// Bundled recitation (Sheikh Sa'd al-Ghamidi, versebyversequran.com): audio/SSS/AAA.mp3, 000 = bismillah
+const localSrc = {};
+async function localAyahUrl(n,a){
+  const path=`audio/${pad3(n)}/${pad3(a)}.mp3`;
+  if(!localSrc[path]) localSrc[path] = fetch(path).then(r=>{ if(!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+    .then(buf=>{ const u8=new Uint8Array(buf); let s=''; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return {data:'data:audio/mpeg;base64,'+btoa(s), buf}; })
+    .catch(e=>{ delete localSrc[path]; throw e; });
+  return localSrc[path];
+}
+let actx=null, stopBuf=null;
+async function playBuf(arrBuf, el){
+  const C=window.AudioContext||window.webkitAudioContext; if(!C) return false;
+  if(!actx) actx=new C(); if(actx.state==='suspended') actx.resume();
+  let b; try{ b=await new Promise((res,rej)=>actx.decodeAudioData(arrBuf.slice(0),res,rej)); }catch(e){ return false; }
+  return new Promise(res=>{ const s=actx.createBufferSource(); s.buffer=b; s.connect(actx.destination);
+    let done=false; const fin=v=>{ if(done) return; done=true; stopBuf=null; el&&el.classList.remove('speaking'); res(v); };
+    s.onended=()=>fin(true); stopBuf=()=>{ try{s.stop()}catch(e){} fin(null); }; el&&el.classList.add('speaking'); s.start(); });
+}
+async function playLocal(n,a,el){
+  const run=TTS.run; let src;
+  try{ src=await localAyahUrl(n,a); }catch(e){ return false; }
+  if(run!==TTS.run) return null;
+  const r=await playAudio(src.data,'local',el);
+  if(r!==false || run!==TTS.run) return r;
+  return playBuf(src.buf, el);
+}
+const QURAN_ONLY_MSG = 'তিলাওয়াত লোড হয়নি — ইন্টারনেট দেখে আবার চেষ্টা করুন, অথবা quran.com বাটনে চাপ দিন।';
 async function sayAyah(n,a,el){
   const run=TTS.run;
-  if(REMOTE){ const r = await playAudio(`https://everyayah.com/data/${QARI[S.qari].p}/${pad3(n)}${pad3(a)}.mp3`,'ayah',el); if(r!==false || run!==TTS.run) return; }
-  if(run===TTS.run) toast(QURAN_ONLY_MSG,4500);
+  if(REMOTE && S.qari!=='ghamidi'){ const r = await playAudio(`https://everyayah.com/data/${QARI[S.qari].p}/${pad3(n)}${pad3(a)}.mp3`,'ayah',el); if(r!==false || run!==TTS.run) return; }
+  const r = await playLocal(n,a,el);
+  if(r===false && run===TTS.run) toast(QURAN_ONLY_MSG,4500);
 }
 // Lesson words that also appear in the 12 surahs are played from the qari's word recording
 const skel = t => cleanAr(t).replace(/[\u064B-\u0652]/g,'').replace(/[أإآ]/g,'ا');
@@ -513,13 +541,14 @@ async function sayLessonText(text, el){
 async function sayWord(n,a,w,text,el){
   const run=TTS.run;
   if(REMOTE){ const r = await playAudio(`https://audio.qurancdn.com/wbw/${pad3(n)}_${pad3(a)}_${pad3(w)}.mp3`,'word',el); if(r!==false || run!==TTS.run) return; }
-  if(run===TTS.run) toast(QURAN_ONLY_MSG,4500);
+  const card=el&&el.closest('.ayah'); card&&card.classList.add('playing');
+  await sayAyah(n,a,null); card&&card.classList.remove('playing');
 }
 function stopAll(){
   TTS.run++;
   if(TTS.ok) speechSynthesis.cancel();
   try{ player.pause(); }catch(e){}
-  finishAudio && finishAudio();
+  finishAudio && finishAudio(); stopBuf && stopBuf();
   document.querySelectorAll('.speaking,.playing').forEach(e=>e.classList.remove('speaking','playing'));
   $('#stopFab').hidden=true;
 }
@@ -648,7 +677,7 @@ function home(){
       html += `<a class="lrow ${DONE.has(l.id)?'done':''} ${nx===l?'next':''}" href="#${l.id}"><span class="lnum">${DONE.has(l.id)?I.check.replace('<svg','<svg width="18" height="18"'):bnNum(i+1)}</span><span><div class="t">${l.t}</div><div class="d">${l.d}</div></span><span class="ar">${l.ar.split(' ')[0]}</span></a>`; });
     html += `</section>`;
   });
-  html += `<p class="small" style="text-align:center">আরবি পাঠ: উসমানি লিপি (বাদশাহ ফাহাদ কমপ্লেক্স) · তিলাওয়াত: everyayah.com ও quran.com</p></div>`;
+  html += `<p class="small" style="text-align:center">আরবি পাঠ: উসমানি লিপি (বাদশাহ ফাহাদ কমপ্লেক্স) · তিলাওয়াত: শাইখ সা‘দ আল-গামিদী (versebyversequran.com)</p></div>`;
   app.innerHTML = html;
   document.querySelectorAll('[data-voice-status]').forEach(renderVoiceStatus);
 }
@@ -896,7 +925,7 @@ function surahView(n){
      <a class="btn" href="https://quran.com/${n}" target="_blank" rel="noopener">${I.ext} quran.com</a></div>
     <div class="ctrl-row"><span>প্রতি আয়াত</span>${segHTML('rep',[[1,'১ বার'],[3,'৩ বার'],[5,'৫ বার']],S.rep)}</div>
     <div class="ctrl-row"><label class="tg"><input type="checkbox" id="tUcc" ${S.ucc?'checked':''}> বাংলা উচ্চারণ</label><label class="tg"><input type="checkbox" id="tMean" ${S.mean?'checked':''}> বাংলা অর্থ</label></div>
-    <p class="small">${REMOTE?`কারি: ${QARI[S.qari].n} · শব্দে ছুঁয়ে আলাদা করে শুনুন · মুখস্থ করতে “৩ বার” বেছে নিন`:'কুরআনের আয়াত যন্ত্রের কণ্ঠে পড়ালে তাজবীদ ভুল হয়, তাই এখানে শুধু কারির তিলাওয়াত শুনুন: উপরের <b>quran.com</b> বাটনে চাপ দিন।'}</p>
+    <p class="small">কারি: ${QARI[REMOTE?S.qari:'ghamidi'].n} · ${REMOTE?'শব্দে ছুঁয়ে আলাদা করে শুনুন':'যেকোনো শব্দে বা আয়াত নম্বরে ছুঁয়ে সেই আয়াত শুনুন'} · মুখস্থ করতে “৩ বার” বেছে নিন</p>
    </div>
    ${n!==1?`<div class="bism" id="bism" lang="ar">${SURAH_DATA[1].v[0][0]}</div>`:''}
    ${s.v.map((v,k)=>`<article class="ayah" data-ay="${k}">
@@ -916,10 +945,11 @@ function surahView(n){
   };
   app.querySelectorAll('[data-ayplay]').forEach(b=>b.onclick=()=>sequence(alive=>playAy(+b.dataset.ayplay,1,alive)));
   app.querySelectorAll('[data-ayrep]').forEach(b=>b.onclick=()=>sequence(alive=>playAy(+b.dataset.ayrep,3,alive)));
-  const bism=$('#bism'); if(bism) bism.onclick=()=>sequence(()=>sayAyah(1,1,bism));
+  const sayBism = el => (REMOTE && S.qari!=='ghamidi') ? sayAyah(1,1,el) : playLocal(n,0,el).then(r=>{ if(r===false) return sayAyah(1,1,el); });
+  const bism=$('#bism'); if(bism) bism.onclick=()=>sequence(()=>sayBism(bism));
   $('#playS').onclick=()=>sequence(async alive=>{
     markActive();
-    if(bism){ await sayAyah(1,1,bism); }
+    if(bism){ await sayBism(bism); }
     for(let k=0;k<s.v.length;k++){ if(!alive()) return; await playAy(k,S.rep,alive); await new Promise(r=>setTimeout(r,400)); }
   });
 }

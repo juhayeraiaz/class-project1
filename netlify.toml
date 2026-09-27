@@ -1,0 +1,13 @@
+# Netlify deploys the Al-Quran Learner app (static files, no build step).
+[build]
+  publish = "al-quran-learner"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/*.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"

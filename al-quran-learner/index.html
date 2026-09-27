@@ -501,6 +501,15 @@ async function sayAyah(n,a,el){
   if(REMOTE){ const r = await playAudio(`https://everyayah.com/data/${QARI[S.qari].p}/${pad3(n)}${pad3(a)}.mp3`,'ayah',el); if(r!==false || run!==TTS.run) return; }
   if(run===TTS.run) toast(QURAN_ONLY_MSG,4500);
 }
+// Lesson words that also appear in the 12 surahs are played from the qari's word recording
+const skel = t => cleanAr(t).replace(/[\u064B-\u0652]/g,'').replace(/[أإآ]/g,'ا');
+const QIDX = {};
+for(const n of SURAH_ORDER) SURAH_DATA[n].v.forEach((v,ai)=>v[0].split(' ').forEach((w,wi)=>{ const k=skel(w); if(!(k in QIDX)) QIDX[k]=[n,ai+1,wi+1]; }));
+async function sayLessonText(text, el){
+  const run=TTS.run, q = REMOTE && !/\s/.test(text.trim()) ? QIDX[skel(text)] : null;
+  if(q){ const r = await playAudio(`https://audio.qurancdn.com/wbw/${pad3(q[0])}_${pad3(q[1])}_${pad3(q[2])}.mp3`,'word',el); if(r!==false || run!==TTS.run) return r; }
+  return sayText(text, el);
+}
 async function sayWord(n,a,w,text,el){
   const run=TTS.run;
   if(REMOTE){ const r = await playAudio(`https://audio.qurancdn.com/wbw/${pad3(n)}_${pad3(a)}_${pad3(w)}.mp3`,'word',el); if(r!==false || run!==TTS.run) return; }
@@ -522,7 +531,7 @@ document.addEventListener('click',e=>{
   if(el.closest('.hidden-read')) el.classList.add('revealed');
   stopAll(); markActive();
   if(el.dataset.w){ const [n,a,w]=el.dataset.w.split(':').map(Number); sayWord(n,a,w,el.textContent,el); }
-  else sayText(el.dataset.say, el);
+  else sayLessonText(el.dataset.say, el);
 });
 
 /* ---------- progress & streak ---------- */

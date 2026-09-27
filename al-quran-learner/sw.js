@@ -1,6 +1,6 @@
 // Offline support: app shell is network-first with cache fallback; fonts are cached after first load.
 // Recitation audio is streamed and not cached.
-const CACHE = 'aql-v4';
+const CACHE = 'aql-v5';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon.svg', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

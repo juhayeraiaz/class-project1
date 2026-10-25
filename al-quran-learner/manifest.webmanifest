@@ -1,0 +1,17 @@
+{
+  "name": "Al-Quran Learner — আল-কুরআন শিক্ষা",
+  "short_name": "কুরআন শিক্ষা",
+  "description": "একদম শুরু থেকে বাংলায় কুরআন পড়া শিখুন",
+  "lang": "bn",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EFF3EE",
+  "theme_color": "#0B5A44",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"},
+    {"src": "icon.svg", "sizes": "any", "type": "image/svg+xml"}
+  ]
+}

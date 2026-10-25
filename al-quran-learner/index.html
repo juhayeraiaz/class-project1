@@ -419,7 +419,7 @@ const I = {
 const tip = html => `<div class="tip">${I.bulb}<div>${html}</div></div>`;
 
 /* ---------- settings ---------- */
-const S = Object.assign({slow:true,size:'m',qari:'ghamidi',ucc:true,mean:true,rep:1}, store('aql-set')||{});
+const S = Object.assign({slow:true,size:'m',qari:'ghamidi',ucc:true,mean:true,rep:1,devVoice:false}, store('aql-set')||{});
 const REMOTE = true; // real qari recordings are reachable only on our own hosting
 if(store('aql-slow')===false && !store('aql-set')) S.slow=false;
 const saveS = () => store('aql-set',S);
@@ -442,7 +442,7 @@ function pickVoice(){
   const sc = v => (/natural|online|neural|premium|enhanced/i.test(v.name)?4:0)+(/google/i.test(v.name)?2:0)+(/SA/i.test(v.lang)?1:0);
   ar.sort((a,b)=>sc(b)-sc(a));
   TTS.voice = ar[0]||null;
-  document.querySelectorAll('[data-voice-status]').forEach(renderVoiceStatus);
+  document.querySelectorAll('[data-dev-voice]').forEach(renderDevVoice);
 }
 if(TTS.ok){ pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; setTimeout(pickVoice,800); }
 function cleanAr(t){
@@ -490,30 +490,11 @@ function playAudio(url, kind, el, rateV){
   });
 }
 /* ---------- device voice for letters; qari recordings for Quran ---------- */
-// Letter sounds cut from the qari's recitation (audio/letters.json: "<letter>_<a|i|u|aa|ii|uu|name>" -> mp3)
-let LCLIPS=null, lclipsP=null;
-function loadLetterClips(){ if(!lclipsP) lclipsP=fetch('audio/letters.json').then(r=>{ if(!r.ok) throw 0; return r.json(); }).then(o=>LCLIPS=o).catch(()=>{ lclipsP=null; return null; }); return lclipsP; }
-loadLetterClips();
-const CLIP_KEYS = {};
-SYL_LETTERS.forEach(l=>['a','i','u','aa','ii','uu'].forEach(v=>{ CLIP_KEYS[arSyl(l,v)]=[`${l}_${v}`]; }));
-LETTERS.forEach(l=>{ const b=(l[0]==='ا'||l[0]==='ء')?'أ':l[0]; CLIP_KEYS[l[1]]=[`${l[0]}_name`, ...['a','i','u','aa','ii','uu'].map(v=>`${b}_${v}`)]; });
-async function playLetterClip(text, el){
-  const keys=CLIP_KEYS[text]; if(!keys) return false;
-  const run=TTS.run; if(!LCLIPS) await loadLetterClips();
-  const k=LCLIPS && keys.find(k=>LCLIPS[k]); if(!k) return false;
-  if(run!==TTS.run) return null;
-  const b64=LCLIPS[k], r=await playAudio('data:audio/mpeg;base64,'+b64,'local',el);
-  if(r!==false || run!==TTS.run) return r;
-  const bin=atob(b64), u8=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) u8[i]=bin.charCodeAt(i);
-  return playBuf(u8.buffer, el);
-}
-let noVoiceShown=false;
+// Only unedited qari recitation is played by default; a machine voice can mispronounce, so it is opt-in.
 async function sayText(text, el){
-  const run=TTS.run, c=await playLetterClip(text, el);
-  if(c!==false || run!==TTS.run) return c;
-  if(TTS.ok && TTS.voice) return speak(text, el);
+  if(S.devVoice && TTS.ok && TTS.voice) return speak(text, el);
   const m = el && el.dataset.muq; if(m){ const [n,a]=m.split(':').map(Number); return sayAyah(n,a,el); }
-  if(!noVoiceShown){ noVoiceShown=true; toast('এই হরফের শব্দ শুনতে ফোনের আরবি ভয়েস লাগবে — হোম পেজের নির্দেশনা দেখুন।',4500); }
+  toast(S.devVoice ? 'এই ফোনে আরবি ভয়েস পাওয়া যায়নি — হোম পেজের নির্দেশনা দেখুন।' : 'এর যাচাই-করা কারির রেকর্ডিং নেই — বাংলা উচ্চারণ দেখে শিক্ষকের কাছে শুনে নিন।', 4000);
   return false;
 }
 // Bundled recitation (Sheikh Sa'd al-Ghamidi, versebyversequran.com): audio/SSS/AAA.mp3, 000 = bismillah
@@ -607,16 +588,20 @@ function openSheet(html, onMount){
 function closeSheet(){ $('#sheetHost').innerHTML=''; }
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') closeSheet(); });
 
-function renderVoiceStatus(el){
-  const dev = TTS.ok && TTS.voice;
-  el.innerHTML = `<div class="note ${dev?'':'warn'}"><div class="row"><span class="badge g">সূরা ও আয়াত: কারির কণ্ঠে</span><span class="small">কিছু সেট করতে হবে না</span></div>
-    <div class="row"><button class="btn sm" data-ayah="1:1">${I.play} তিলাওয়াত শুনুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div>
-    ${dev?`<p class="small">হরফ ও হরকত: বেশিরভাগই কারির কণ্ঠ থেকে কাটা; বাকিগুলো ফোনের আরবি ভয়েসে।</p>`
-    :`<p class="small" style="color:var(--ink)"><b>হরফ ও হরকত:</b> বেশিরভাগই কারির কণ্ঠ থেকে কাটা, কিছু সেট করতে হবে না। অল্প কয়েকটির জন্য ফোনের আরবি ভয়েস লাগে:</p>
-    <details><summary>কীভাবে চালু করবেন</summary><ul style="margin-top:6px">
+const VOICE_HELP = `<details><summary>ফোনে আরবি ভয়েস কীভাবে চালু করবেন</summary><ul style="margin-top:6px">
       <li><b>Android:</b> Settings → Accessibility (বা System) → Text-to-speech → Speech Services by Google → ⚙ → Install voice data → <b>Arabic</b>। তারপর লিংকটি <b>Chrome</b>-এ খুলুন।</li>
       <li><b>iPhone:</b> Settings → Accessibility → Spoken Content → Voices → <b>Arabic</b> ডাউনলোড করুন।</li>
-      <li><b>কম্পিউটার:</b> <b>Microsoft Edge</b>-এ খুললে সাধারণত আগে থেকেই থাকে।</li></ul></details>`}</div>`;
+      <li><b>কম্পিউটার:</b> <b>Microsoft Edge</b>-এ খুললে সাধারণত আগে থেকেই থাকে।</li></ul></details>`;
+function renderVoiceStatus(el){
+  el.innerHTML = `<div class="note"><div class="row"><span class="badge g">শুধু কারির আসল তিলাওয়াত</span></div>
+    <p class="small" style="color:var(--ink)">সূরা, আয়াত, তাজবীদের উদাহরণ আর ১৪টি হরফ শাইখ সা‘দ আল-গামিদীর কাটা-ছেঁড়া ছাড়া পুরো তিলাওয়াতে শোনা যায়। বাকি হরফ ও হরকতের যাচাই-করা রেকর্ডিং এখনো নেই — বাংলা উচ্চারণ দেখে একজন শিক্ষকের কাছে শুনে নিন।</p>
+    <div class="row"><button class="btn sm" data-ayah="1:1">${I.play} তিলাওয়াত শুনুন <span class="ar">بِسْمِ اللّٰهِ</span></button></div></div>`;
+}
+function renderDevVoice(el){
+  const dev = TTS.ok && TTS.voice;
+  el.innerHTML = `<label class="radio"><input type="checkbox" id="devVoice" ${S.devVoice?'checked':''}><span><div>হরফ ও হরকতে ফোনের আরবি ভয়েস ব্যবহার করুন</div>
+    <div class="small">যন্ত্রের কণ্ঠ — উচ্চারণে ভুল হতে পারে, শিক্ষকের সাথে মিলিয়ে নিন। ${dev?'পাওয়া গেছে: '+esc(TTS.voice.name):'এই ডিভাইসে এখনো পাওয়া যায়নি।'}</div></span></label>${dev?'':VOICE_HELP}`;
+  el.querySelector('#devVoice').onchange=e=>{ S.devVoice=e.target.checked; saveS(); };
 }
 function segHTML(name, opts, cur){ return `<div class="seg" role="group">${opts.map(([v,l])=>`<button data-set="${name}" data-v="${v}" aria-pressed="${String(cur)===String(v)}">${l}</button>`).join('')}</div>`; }
 function bindSeg(root, onChange){
@@ -631,11 +616,12 @@ function openSettings(){
    <div class="set-row"><b>আরবি লেখার আকার</b>${segHTML('size',[['s','ছোট'],['m','মাঝারি'],['l','বড়'],['xl','অনেক বড়']],S.size)}
      <div class="ar" style="font-size:calc(34px * var(--arS));text-align:center;line-height:1.8">ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ</div></div>
    ${REMOTE?`<div class="set-row"><b>সূরার কারি</b>${Object.entries(QARI).map(([k,q])=>`<label class="radio"><input type="radio" name="qari" value="${k}" ${S.qari===k?'checked':''}><span><div>${q.n}</div><div class="small">${q.d}</div></span></label>`).join('')}</div>`:''}
+   <div class="set-row"><b>যন্ত্রের কণ্ঠ (ঐচ্ছিক)</b><div data-dev-voice></div></div>
    <div class="set-row"><b>অগ্রগতি</b><div class="row"><button class="btn sm" id="resetBtn">সব অগ্রগতি মুছুন</button><span class="small" id="resetMsg"></span></div></div>
    <button class="btn primary" data-close>ঠিক আছে</button>`, sh=>{
     bindSeg(sh);
     sh.querySelectorAll('input[name=qari]').forEach(r=>r.onchange=()=>{S.qari=r.value;saveS();SRC.ayah=null;});
-    renderVoiceStatus(sh.querySelector('[data-voice-status]'));
+    renderDevVoice(sh.querySelector('[data-dev-voice]'));
     let armed=false;
     sh.querySelector('#resetBtn').onclick=e=>{
       if(!armed){ armed=true; e.target.textContent='নিশ্চিত? আবার চাপুন'; $('#resetMsg').textContent='সম্পন্ন পাঠের চিহ্ন মুছে যাবে'; return; }
@@ -650,7 +636,7 @@ function welcome(){
    <h2 style="text-align:center">আসসালামু আলাইকুম!</h2>
    <p style="text-align:center">এই অ্যাপে একদম শুরু থেকে, বাংলায়, কুরআন পড়া শিখবেন — কোনো আগের জ্ঞান লাগবে না।</p>
    <ul class="checklist">
-    <li><span class="n">১</span><span><b>ছুঁয়ে শুনুন:</b> যেকোনো আরবি হরফ বা শব্দে ছুঁয়ে দিলে উচ্চারণ শোনা যাবে।</span></li>
+    <li><span class="n">১</span><span><b>কারির কণ্ঠে শুনুন:</b> সূরার আয়াত, তাজবীদের উদাহরণ আর ১৪টি হরফে চাপ দিলে কারির আসল তিলাওয়াত বাজে।</span></li>
     <li><span class="n">২</span><span><b>নিজে বলুন:</b> শোনার পর জোরে জোরে ৩ বার বলুন।</span></li>
     <li><span class="n">৩</span><span><b>ক্রমানুসারে এগোন:</b> প্রতিদিন ১৫–২০ মিনিট, একটি করে পাঠ।</span></li></ul>
    <button class="btn primary" data-close>বিসমিল্লাহ, শুরু করি</button></div>`);
@@ -660,7 +646,7 @@ function welcome(){
 /* ---------- lessons ---------- */
 const PARTS = ['হরফ চেনা','হরকত ও চিহ্ন','সুন্দর করে পড়া','কুরআন পড়া'];
 const LESSONS = [
- {id:'l1',p:0,t:'আরবি হরফ চিনি',ar:'ا ب ت',d:'২৯টি হরফ দেখুন, ছুঁয়ে নাম শুনুন, উচ্চারণের জায়গা জানুন।',r:lessonLetters},
+ {id:'l1',p:0,t:'আরবি হরফ চিনি',ar:'ا ب ت',d:'২৯টি হরফ দেখুন, উচ্চারণের জায়গা জানুন, ১৪টি হরফ কারির কণ্ঠে শুনুন।',r:lessonLetters},
  {id:'l2',p:0,t:'হরফের রূপ ও মিল',ar:'بـ ـبـ ـب',d:'শব্দের শুরু, মাঝে, শেষে হরফ কেমন দেখায়।',r:lessonForms},
  {id:'l3',p:1,t:'যবর, যের, পেশ',ar:'بَ بِ بُ',d:'হরফের উপরে-নিচের ছোট দাগ — আ, ই, উ।',r:()=>lessonSyl('l3')},
  {id:'l4',p:1,t:'তানবীন',ar:'بً بٍ بٌ',d:'দুই যবর, দুই যের, দুই পেশ — আন, ইন, উন।',r:()=>lessonSyl('l4')},
@@ -723,11 +709,11 @@ const MUQ = {'ا':[2,1,'الٓمٓ'],'ل':[2,1,'الٓمٓ'],'م':[40,1,'حمٓ'
 /* L1 letters */
 function lessonLetters(){
   let grid = LETTERS.map((l,i)=>`<button class="tile ${l[5]?'heavy':''}" data-li="${i}" data-say="${l[1]}" ${MUQ[l[0]]?`data-muq="${MUQ[l[0]][0]}:${MUQ[l[0]][1]}"`:''}><span class="a">${l[0]}</span><span class="b">${l[2]}</span></button>`).join('');
-  app.innerHTML = lessonShell('l1','আরবি লেখা <b>ডান দিক থেকে বাম দিকে</b> পড়া হয়। মোট ২৯টি হরফ। প্রতিটি হরফ ছুঁয়ে নাম শুনুন, তারপর নিজে ৩ বার বলুন।',
+  app.innerHTML = lessonShell('l1','আরবি লেখা <b>ডান দিক থেকে বাম দিকে</b> পড়া হয়। মোট ২৯টি হরফ। প্রতিটি হরফে চাপ দিয়ে উচ্চারণের নির্দেশনা পড়ুন, তারপর নিজে ৩ বার বলুন।',
    `<div class="detail" id="letterDetail"></div>
    <div class="legend"><span><b style="color:var(--heavy)">লাল রঙের</b> হরফগুলো মোটা — মুখ ভরে পড়তে হয়</span></div>
    <div class="grid g-letters">${grid}</div>
-   ${tip('হরফের শব্দগুলো শাইখ সা‘দ আল-গামিদীর কুরআন তিলাওয়াত থেকে কেটে নেওয়া — মন দিয়ে শুনে নিজে বলুন।')}
+   ${tip('<b>কারির কণ্ঠে:</b> ১৪টি হরফ <span class="ari" dir="rtl">ا ل م ر ك ه ي ع ص ط س ح ق ن</span> কুরআনের কয়েকটি সূরার শুরুতে আলাদা করে পড়া হয় — যেমন <span class="ari" dir="rtl">الٓمٓ</span>। এগুলোতে চাপ দিলে সেই আয়াতটি কারির তিলাওয়াতে বাজবে (হরফের নাম মাদ্দ দিয়ে লম্বা করে পড়া হয়)। বাকি হরফের যাচাই-করা রেকর্ডিং নেই — ভুল শেখার চেয়ে শিক্ষকের কাছে শুনে নেওয়া ভালো।')}
    ${tip('বাংলা বানানে <b>ذ ز ظ</b> তিনটিই “য”, আর <b>ث س ص</b> কাছাকাছি লেখা হয় — কিন্তু আসল আওয়াজ আলাদা। তাই কান দিয়ে শুনে শিখুন।')}`);
   const show = i => {
     const l = LETTERS[i];
@@ -736,7 +722,8 @@ function lessonLetters(){
     $('#letterDetail').innerHTML = `<div class="big ${l[5]?'heavy':''}" data-say="${l[1]}" lang="ar">${l[0]}</div>
       <div style="display:flex;flex-direction:column;gap:6px;min-width:0"><div class="nm">${l[2]}<span class="ar">${l[1]}</span>${l[5]?' <span class="badge">মোটা</span>':''}</div>
       <p>${l[4]}</p>
-      <div class="chips"><button class="btn sm primary" data-say="${l[1]}">${I.play} শুনুন</button>${['a','i','u'].map(v=>`<button class="btn sm" data-say="${arSyl(base,v)}"><span class="ar">${arSyl(base,v)}</span> ${bnSyl(base,v)}</button>`).join('')}</div></div>`;
+      ${MUQ[l[0]]?`<p class="small">কুরআনে কারি এই হরফের নাম পড়েছেন — সূরা ${MUQ_SURAH[MUQ[l[0]][0]]}, আয়াত ${bnNum(MUQ[l[0]][1])}-এর শুরুতে। পুরো আয়াত বাজবে, শুরুতেই হরফের নাম।</p>`:'<p class="small">এই হরফের যাচাই-করা কারির রেকর্ডিং নেই — উপরের বাংলা নির্দেশনা দেখে শিক্ষকের কাছে শুনে নিন।</p>'}
+      <div class="chips">${MUQ[l[0]]?`<button class="btn sm primary" data-ayah="${MUQ[l[0]][0]}:${MUQ[l[0]][1]}">${I.play} কারির কণ্ঠে <span class="ar">${MUQ[l[0]][2]}</span></button>`:''}${['a','i','u'].map(v=>`<button class="btn sm" data-say="${arSyl(base,v)}"><span class="ar">${arSyl(base,v)}</span> ${bnSyl(base,v)}</button>`).join('')}</div></div>`;
   };
   app.querySelector('.g-letters').addEventListener('click',e=>{const t=e.target.closest('[data-li]'); if(t) show(+t.dataset.li);});
   show(1);
@@ -767,9 +754,10 @@ function sylRows(vs){
   return SYL_LETTERS.map(l=>`<div class="syl-row"><div class="syl-head" data-rowplay style="${HEAVY.has(l)?'color:var(--heavy)':''}">${l==='أ'?'ا':l}<span>${l==='أ'?'আলিফ':LMAP[l][2]}</span></div>
    <div class="grid g-syl">${vs.map(v=>`<button class="tile ${HEAVY.has(l)?'heavy':''}" data-say="${arSyl(l,v)}"><span class="a">${arSyl(l,v)}</span><span class="b">${bnSyl(l,v)}</span></button>`).join('')}</div></div>`).join('');
 }
-function playControls(){ return `<div class="row"><button class="btn primary" id="playAll">${I.play} সবগুলো ক্রমানুসারে শুনুন</button><span class="small">বাম পাশের হরফে চাপলে শুধু সেই সারি শোনা যাবে</span></div>`; }
+function playControls(){ if(!(S.devVoice && TTS.ok && TTS.voice)) return `<div class="tip">${I.bulb}<div>এই পাঠের যাচাই-করা কারির রেকর্ডিং নেই। বাংলা উচ্চারণ দেখে পড়ুন এবং একজন শিক্ষকের কাছে শুনে মিলিয়ে নিন। (চাইলে সেটিংসে ফোনের ভয়েস চালু করতে পারেন — তবে যন্ত্রের উচ্চারণে ভুল থাকতে পারে।)</div></div>`; return `<div class="row"><button class="btn primary" id="playAll">${I.play} সবগুলো ক্রমানুসারে শুনুন</button><span class="small">বাম পাশের হরফে চাপলে শুধু সেই সারি শোনা যাবে</span></div>`; }
 function bindPlay(){
   const playList = tiles => sequence(async alive=>{ for(const el of tiles){ if(!alive()) return; el.scrollIntoView({block:'nearest',behavior:'smooth'}); await sayText(el.dataset.say, el); } });
+  if(!$('#playAll')) return;
   $('#playAll').onclick = ()=>playList([...app.querySelectorAll('.syl-list .tile')]);
   app.querySelectorAll('[data-rowplay]').forEach(h=>h.onclick=()=>playList([...h.parentElement.querySelectorAll('.tile')]));
 }
